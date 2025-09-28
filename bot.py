@@ -6,6 +6,8 @@ from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from config import *
+from flask import Flask
+import threading
 
 # Configure logging
 logging.basicConfig(
@@ -319,6 +321,18 @@ class PubMedBot:
             logger.error(f"Error in custom range: {e}")
             await update.message.reply_text("❌ Error fetching articles. Please try again later.")
 
+# Create Flask app for healthcheck
+app = Flask(__name__)
+
+@app.route('/')
+def healthcheck():
+    """Healthcheck endpoint for Railway"""
+    return "CPT PSP Bot is running!", 200
+
+def run_flask():
+    """Run Flask app in a separate thread"""
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
+
 def main():
     """Main function to run the bot"""
     # Get bot token from environment variable
@@ -326,6 +340,10 @@ def main():
     if not token:
         logger.error("TELEGRAM_BOT_TOKEN environment variable not set")
         return
+    
+    # Start Flask server in a separate thread for healthcheck
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
     
     # Create bot instance
     bot = PubMedBot(token)
