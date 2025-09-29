@@ -6,8 +6,6 @@ from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from config import *
-from flask import Flask
-import threading
 
 # Configure logging
 logging.basicConfig(
@@ -321,18 +319,6 @@ class PubMedBot:
             logger.error(f"Error in custom range: {e}")
             await update.message.reply_text("❌ Error fetching articles. Please try again later.")
 
-# Create Flask app for healthcheck
-app = Flask(__name__)
-
-@app.route('/')
-def healthcheck():
-    """Healthcheck endpoint for Railway"""
-    return "CPT PSP Bot is running!", 200
-
-def run_flask():
-    """Run Flask app in a separate thread"""
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
-
 def main():
     """Main function to run the bot"""
     # Get bot token from environment variable
@@ -340,10 +326,6 @@ def main():
     if not token:
         logger.error("TELEGRAM_BOT_TOKEN environment variable not set")
         return
-    
-    # Start Flask server in a separate thread for healthcheck
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
     
     # Create bot instance
     bot = PubMedBot(token)
@@ -360,17 +342,21 @@ def main():
     # Add message handler for custom date range input
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_custom_range))
     
-    # Start the bot
-    logger.info("Starting CPT PSP Bot...")
-    
-    # Handle graceful shutdown
-    try:
+    # Use webhooks instead of polling for Railway
+    webhook_url = os.getenv('RAILWAY_PUBLIC_DOMAIN')
+    if webhook_url:
+        # Run with webhook
+        logger.info(f"Starting bot with webhook: {webhook_url}")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.getenv('PORT', 8080)),
+            url_path=token,
+            webhook_url=f"https://{webhook_url}/{token}"
+        )
+    else:
+        # Fallback to polling for local development
+        logger.info("Starting bot with polling")
         application.run_polling()
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-    except Exception as e:
-        logger.error(f"Bot crashed: {e}")
-        raise
 
 if __name__ == '__main__':
     main()
